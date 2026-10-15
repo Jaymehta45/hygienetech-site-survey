@@ -7,11 +7,13 @@ Mobile web app for the **Corporate Office Housekeeping Scoping Checklist**.
 - Emails the PDF to **info@hygienetech.in** on every generate
 - Also downloads a local copy on the device
 
-## Live site
+## Live website
 
-After GitHub Pages is enabled:
+**Vercel:** https://site-survey-gamma.vercel.app
 
-`https://jaymehtapit.github.io/hygienetech-site-survey/`
+**GitHub Pages:** https://jaymehta45.github.io/hygienetech-site-survey/
+
+**Repo:** https://github.com/Jaymehta45/hygienetech-site-survey
 
 ## Local run
 
