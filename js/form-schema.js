@@ -357,8 +357,8 @@ window.HT_SCHEMA = [
   },
   {
     id: "REVIEW",
-    title: "Review & Submit",
-    desc: "Generate the PDF report and email it to HygieneTech.",
+    title: "Review & Download",
+    desc: "Download the PDF report (logo included). A copy is also emailed to HygieneTech.",
     kind: "review",
   },
 ];

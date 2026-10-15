@@ -4,10 +4,11 @@
     const a = document.createElement("a");
     a.href = url;
     a.download = filename;
+    a.rel = "noopener";
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    setTimeout(() => URL.revokeObjectURL(url), 2500);
   }
 
   async function sendViaFormSubmit({ state, blob, filename }) {
@@ -50,31 +51,42 @@
     return data;
   }
 
-  async function submit({ state, blob, filename, onStatus }) {
-    downloadBlob(blob, filename);
+  async function submit({ state, blob, filename, doc, onStatus }) {
+    // 1) Download PDF first (primary action)
+    onStatus("Downloading PDF…", "info");
+    try {
+      if (doc && typeof window.HT_PDF.download === "function") {
+        window.HT_PDF.download(doc, filename);
+      } else {
+        downloadBlob(blob, filename);
+      }
+    } catch (err) {
+      console.error(err);
+      downloadBlob(blob, filename);
+    }
 
-    onStatus(`PDF saved. Emailing report to ${window.HT_CONFIG.emailTo}…`, "info");
+    onStatus(`PDF downloaded: ${filename}. Sending a copy to ${window.HT_CONFIG.emailTo}…`, "ok");
 
+    // 2) Email is secondary — never undo a successful download
     try {
       await sendViaFormSubmit({ state, blob, filename });
       onStatus(
-        `Report emailed to ${window.HT_CONFIG.emailTo}. A local PDF copy was also downloaded.`,
+        `PDF downloaded and emailed to ${window.HT_CONFIG.emailTo}.`,
         "ok"
       );
     } catch (err) {
       console.error(err);
       const msg = String(err.message || err);
-      // First-time FormSubmit activation lands in the inbox
       if (/activate|confirm|check your email/i.test(msg)) {
         onStatus(
-          `Almost there: open the activation email sent to ${window.HT_CONFIG.emailTo}, confirm once, then generate the PDF again.`,
+          `PDF downloaded. To enable auto-email, open the activation mail at ${window.HT_CONFIG.emailTo} once, then try again.`,
           "info"
         );
         return;
       }
       onStatus(
-        `PDF downloaded, but email failed (${msg}). Attach the PDF manually to ${window.HT_CONFIG.emailTo}.`,
-        "err"
+        `PDF downloaded successfully. Email could not be sent (${msg}) — attach the file manually to ${window.HT_CONFIG.emailTo} if needed.`,
+        "info"
       );
     }
   }

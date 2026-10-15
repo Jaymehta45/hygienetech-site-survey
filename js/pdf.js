@@ -37,24 +37,34 @@
     });
   }
 
+  // Logo source is ~16:9 — keep that ratio when scaling
+  const LOGO_RATIO = 800 / 450;
+
   function addHeader(doc, logoDataUrl, pageW) {
+    const headerH = 42;
     doc.setFillColor(0, 0, 0);
-    doc.rect(0, 0, pageW, 28, "F");
+    doc.rect(0, 0, pageW, headerH, "F");
+
     if (logoDataUrl) {
       try {
-        doc.addImage(logoDataUrl, "PNG", 12, 4, 42, 20);
+        const logoH = 34;
+        const logoW = logoH * LOGO_RATIO;
+        doc.addImage(logoDataUrl, "PNG", 10, (headerH - logoH) / 2, logoW, logoH);
       } catch {
         /* ignore logo failure */
       }
     }
-    doc.setTextColor(...BLUE);
+
+    doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("Site Survey Report", pageW - 12, 12, { align: "right" });
+    doc.setFontSize(13);
+    doc.text("Site Survey Report", pageW - 12, 17, { align: "right" });
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.setTextColor(180, 190, 205);
-    doc.text("Corporate Office Housekeeping Scoping Checklist", pageW - 12, 19, { align: "right" });
+    doc.setTextColor(170, 190, 210);
+    doc.text("Corporate Office Housekeeping", pageW - 12, 24, { align: "right" });
+    doc.text("Scoping Checklist", pageW - 12, 29, { align: "right" });
+    return headerH;
   }
 
   function addFooter(doc, pageW, pageH, page, total) {
@@ -79,8 +89,8 @@
   function ensureSpace(ctx, need) {
     if (ctx.y + need > ctx.pageH - 18) {
       ctx.doc.addPage();
-      addHeader(ctx.doc, ctx.logo, ctx.pageW);
-      ctx.y = 36;
+      const headerH = addHeader(ctx.doc, ctx.logo, ctx.pageW);
+      ctx.y = headerH + 10;
     }
   }
 
@@ -241,23 +251,39 @@
     const pageH = doc.internal.pageSize.getHeight();
     const logo = await loadLogoDataUrl();
 
-    addHeader(doc, logo, pageW);
+    const headerH = addHeader(doc, logo, pageW);
+    let y = headerH + 8;
+
+    // Large brand block on page 1
+    if (logo) {
+      try {
+        const bigH = 28;
+        const bigW = bigH * LOGO_RATIO;
+        doc.setFillColor(0, 0, 0);
+        doc.roundedRect(12, y, pageW - 24, bigH + 10, 3, 3, "F");
+        doc.addImage(logo, "PNG", (pageW - bigW) / 2, y + 5, bigW, bigH);
+        y += bigH + 18;
+      } catch {
+        y += 4;
+      }
+    }
 
     // Cover strip
     doc.setFillColor(248, 251, 254);
-    doc.roundedRect(12, 34, pageW - 24, 34, 3, 3, "F");
+    doc.roundedRect(12, y, pageW - 24, 36, 3, 3, "F");
     doc.setTextColor(...INK);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
-    doc.text(state.clientName || "Client not specified", 18, 48);
+    doc.text(state.clientName || "Client not specified", 18, y + 14);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(11);
     doc.setTextColor(...MUTED);
-    doc.text(state.siteName || "Site not specified", 18, 56);
+    doc.text(state.siteName || "Site not specified", 18, y + 22);
     doc.setFontSize(9);
-    doc.text(`Survey date: ${state.surveyDate || "—"}   •   By: ${state.surveyBy || "—"}`, 18, 63);
+    doc.text(`Survey date: ${state.surveyDate || "—"}   •   By: ${state.surveyBy || "—"}`, 18, y + 30);
+    y += 46;
 
-    const ctx = { doc, state, logo, pageW, pageH, y: 78 };
+    const ctx = { doc, state, logo, pageW, pageH, y };
     buildFromSchema(ctx);
 
     const total = doc.getNumberOfPages();
@@ -274,5 +300,10 @@
     return { doc, blob, filename };
   }
 
-  window.HT_PDF = { generate };
+  function download(doc, filename) {
+    // jsPDF's save() is the most reliable download path on mobile + desktop
+    doc.save(filename);
+  }
+
+  window.HT_PDF = { generate, download };
 })();

@@ -170,9 +170,9 @@
         <div class="review-item"><strong>Survey date</strong><span>${escapeHtml(val("surveyDate") || "—")}</span></div>
         <div class="review-item"><strong>Surveyor</strong><span>${escapeHtml(val("surveyBy") || "—")}</span></div>
         <div class="review-item"><strong>Fields captured</strong><span>${filled}</span></div>
-        <div class="review-item"><strong>Email to</strong><span>${escapeHtml(window.HT_CONFIG.emailTo)}</span></div>
+        <div class="review-item"><strong>Also emails</strong><span>${escapeHtml(window.HT_CONFIG.emailTo)}</span></div>
       </div>
-      <p class="step-desc" style="margin-top:16px;margin-bottom:0">Tap <strong>Generate &amp; Send</strong> to create the PDF with the HygieneTech logo, download a copy, and email it to the office.</p>
+      <p class="step-desc" style="margin-top:16px;margin-bottom:0">Tap <strong>Download PDF</strong> to save the report on this device. A copy is also emailed to the office afterward.</p>
     `;
   }
 
@@ -200,7 +200,7 @@
     els.btnPrev.disabled = stepIndex === 0;
 
     const isLast = stepIndex === total - 1;
-    els.btnNext.textContent = isLast ? "Generate & Send" : "Next";
+    els.btnNext.textContent = isLast ? "Download PDF" : "Next";
 
     let body = "";
     if (section.kind === "table") body = renderTable(section);
@@ -253,11 +253,11 @@
 
     els.btnNext.disabled = true;
     els.btnPrev.disabled = true;
-    showStatus("Generating PDF report…", "info");
+    showStatus("Creating PDF…", "info");
 
     try {
-      const { blob, filename } = await window.HT_PDF.generate(state);
-      await window.HT_EMAIL.submit({ state, blob, filename, onStatus: showStatus });
+      const { doc, blob, filename } = await window.HT_PDF.generate(state);
+      await window.HT_EMAIL.submit({ state, blob, filename, doc, onStatus: showStatus });
     } catch (err) {
       console.error(err);
       showStatus(err.message || "Something went wrong while creating the report.", "err");
