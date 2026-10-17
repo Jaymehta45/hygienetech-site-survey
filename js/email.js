@@ -11,32 +11,43 @@
     setTimeout(() => URL.revokeObjectURL(url), 2500);
   }
 
-  async function sendViaFormSubmit({ state, blob, filename }) {
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || "");
+        const base64 = result.includes(",") ? result.split(",")[1] : result;
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  /** Email body is a short note + PDF file only — never the full form. */
+  async function sendPdfOnlyViaFormSubmit({ state, blob, filename }) {
     const to = window.HT_CONFIG.emailTo;
+    const pdfFile = new File([blob], filename, { type: "application/pdf" });
     const fd = new FormData();
 
-    fd.append("_subject", `Site Survey Report — ${state.clientName || "Client"} / ${state.siteName || "Site"}`);
-    fd.append("_template", "table");
+    fd.append("_subject", `Site Survey PDF — ${state.clientName || "Client"} / ${state.siteName || "Site"}`);
     fd.append("_captcha", "false");
-    fd.append("_honey", "");
-
-    if (state.contactPerson || state.surveyBy) {
-      fd.append("name", state.contactPerson || state.surveyBy || "Site Survey");
-    }
-    if (state.contactNumber) {
-      fd.append("contact_number", state.contactNumber);
-    }
-
-    fd.append("client_name", state.clientName || "—");
-    fd.append("site_name", state.siteName || "—");
-    fd.append("survey_date", state.surveyDate || "—");
-    fd.append("survey_conducted_by", state.surveyBy || "—");
-    fd.append("site_address", state.siteAddress || "—");
+    fd.append("_template", "box");
     fd.append(
       "message",
-      `New HygieneTech housekeeping site survey PDF attached.\n\nClient: ${state.clientName || "—"}\nSite: ${state.siteName || "—"}\nDate: ${state.surveyDate || "—"}\nSurveyor: ${state.surveyBy || "—"}`
+      [
+        "HygieneTech Site Survey report is attached as a PDF.",
+        "",
+        `File: ${filename}`,
+        `Client: ${state.clientName || "—"}`,
+        `Site: ${state.siteName || "—"}`,
+        `Survey date: ${state.surveyDate || "—"}`,
+        `Surveyor: ${state.surveyBy || "—"}`,
+        "",
+        "Please open the attached PDF for the full report.",
+      ].join("\n")
     );
-    fd.append("attachment", blob, filename);
+    fd.append("attachment", pdfFile);
 
     const res = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(to)}`, {
       method: "POST",
@@ -51,8 +62,30 @@
     return data;
   }
 
+  async function sendPdfViaApi({ state, blob, filename }) {
+    const pdfBase64 = await blobToBase64(blob);
+    const res = await fetch("/api/send-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        filename,
+        pdfBase64,
+        clientName: state.clientName || "—",
+        siteName: state.siteName || "—",
+        surveyDate: state.surveyDate || "—",
+        surveyBy: state.surveyBy || "—",
+        to: window.HT_CONFIG.emailTo,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.error || `API email failed (${res.status})`);
+    }
+    return data;
+  }
+
   async function submit({ state, blob, filename, doc, onStatus }) {
-    // 1) Download PDF first (primary action)
     onStatus("Downloading PDF…", "info");
     try {
       if (doc && typeof window.HT_PDF.download === "function") {
@@ -65,13 +98,18 @@
       downloadBlob(blob, filename);
     }
 
-    onStatus(`PDF downloaded: ${filename}. Sending a copy to ${window.HT_CONFIG.emailTo}…`, "ok");
+    onStatus(`PDF downloaded: ${filename}. Emailing the PDF to ${window.HT_CONFIG.emailTo}…`, "ok");
 
-    // 2) Email is secondary — never undo a successful download
     try {
-      await sendViaFormSubmit({ state, blob, filename });
+      try {
+        await sendPdfViaApi({ state, blob, filename });
+      } catch (apiErr) {
+        console.warn("API PDF email failed, trying FormSubmit PDF-only:", apiErr);
+        await sendPdfOnlyViaFormSubmit({ state, blob, filename });
+      }
+
       onStatus(
-        `PDF downloaded and emailed to ${window.HT_CONFIG.emailTo}.`,
+        `PDF downloaded and emailed to ${window.HT_CONFIG.emailTo} (PDF attachment, not the form).`,
         "ok"
       );
     } catch (err) {
@@ -79,13 +117,13 @@
       const msg = String(err.message || err);
       if (/activate|confirm|check your email/i.test(msg)) {
         onStatus(
-          `PDF downloaded. To enable auto-email, open the activation mail at ${window.HT_CONFIG.emailTo} once, then try again.`,
+          `PDF downloaded. To enable PDF email, open the activation mail at ${window.HT_CONFIG.emailTo} once, then try again.`,
           "info"
         );
         return;
       }
       onStatus(
-        `PDF downloaded successfully. Email could not be sent (${msg}) — attach the file manually to ${window.HT_CONFIG.emailTo} if needed.`,
+        `PDF downloaded. Email of the PDF failed (${msg}) — attach the downloaded file to ${window.HT_CONFIG.emailTo} manually.`,
         "info"
       );
     }
