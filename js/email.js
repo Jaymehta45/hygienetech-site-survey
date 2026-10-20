@@ -24,6 +24,44 @@
     });
   }
 
+  /** Browser-side FormSubmit — Origin header makes PDF email work. */
+  async function sendPdfOnlyViaFormSubmit({ state, blob, filename }) {
+    const to = window.HT_CONFIG.emailTo;
+    const pdfFile = new File([blob], filename, { type: "application/pdf" });
+    const fd = new FormData();
+
+    fd.append("_subject", `Site Survey PDF — ${state.clientName || "Client"} / ${state.siteName || "Site"}`);
+    fd.append("_captcha", "false");
+    fd.append("_template", "box");
+    fd.append(
+      "message",
+      [
+        "HygieneTech Site Survey report is attached as a PDF.",
+        "",
+        `File: ${filename}`,
+        `Client: ${state.clientName || "—"}`,
+        `Site: ${state.siteName || "—"}`,
+        `Survey date: ${state.surveyDate || "—"}`,
+        `Surveyor: ${state.surveyBy || "—"}`,
+        "",
+        "Please open the attached PDF for the full report.",
+      ].join("\n")
+    );
+    fd.append("attachment", pdfFile);
+
+    const res = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(to)}`, {
+      method: "POST",
+      body: fd,
+      headers: { Accept: "application/json" },
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === "false" || data.success === false) {
+      throw new Error(data.message || data.error || `Email failed (${res.status})`);
+    }
+    return data;
+  }
+
   async function sendPdfViaApi({ state, blob, filename }) {
     const pdfBase64 = await blobToBase64(blob);
     const res = await fetch("/api/send-report", {
@@ -62,30 +100,45 @@
 
     onStatus(`PDF downloaded. Saving to submitted-pdfs and emailing to ${window.HT_CONFIG.emailTo}…`, "info");
 
+    let apiResult = null;
     try {
-      const result = await sendPdfViaApi({ state, blob, filename });
-      const savedPath =
-        (result.saved && (result.saved.relativePath || result.saved.storedName)) || "submitted-pdfs/";
-      const mailTo = (result.emailed && result.emailed.to) || window.HT_CONFIG.emailTo;
-      onStatus(
-        `Done. PDF saved (${savedPath}) and emailed to ${mailTo}.`,
-        "ok"
-      );
-    } catch (err) {
-      console.error(err);
-      const msg = String(err.message || err);
-      if (/activate|confirm|check your email/i.test(msg)) {
+      apiResult = await sendPdfViaApi({ state, blob, filename });
+    } catch (apiErr) {
+      console.warn("API save/email failed:", apiErr);
+    }
+
+    const alreadyEmailed = Boolean(apiResult && apiResult.emailed);
+    if (!alreadyEmailed) {
+      try {
+        await sendPdfOnlyViaFormSubmit({ state, blob, filename });
+      } catch (mailErr) {
+        console.error(mailErr);
+        const msg = String(mailErr.message || mailErr);
+        const savedPath =
+          apiResult && apiResult.saved
+            ? apiResult.saved.relativePath || apiResult.saved.storedName
+            : null;
+
+        if (/activate|confirm|check your email/i.test(msg)) {
+          onStatus(
+            `PDF downloaded${savedPath ? ` and saved (${savedPath})` : ""}. Activate FormSubmit once via the email sent to ${window.HT_CONFIG.emailTo}, then submit again.`,
+            "info"
+          );
+          return;
+        }
+
         onStatus(
-          `PDF downloaded. Email needs one-time activation at ${window.HT_CONFIG.emailTo} — open that mail, confirm, then submit again. Use npm start so PDFs also save into submitted-pdfs/.`,
-          "info"
+          `PDF downloaded${savedPath ? ` and saved (${savedPath})` : ""}. Email failed (${msg}). For reliable folder saves, run: npm start`,
+          savedPath ? "info" : "err"
         );
         return;
       }
-      onStatus(
-        `PDF downloaded on this device. Server save/email failed (${msg}). Run npm start locally to store PDFs in submitted-pdfs/.`,
-        "err"
-      );
     }
+
+    const savedPath =
+      (apiResult && apiResult.saved && (apiResult.saved.relativePath || apiResult.saved.storedName)) ||
+      "submitted-pdfs/";
+    onStatus(`Done. PDF saved (${savedPath}) and emailed to ${window.HT_CONFIG.emailTo}.`, "ok");
   }
 
   window.HT_EMAIL = { submit };
