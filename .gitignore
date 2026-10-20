@@ -1,7 +1,10 @@
 .DS_Store
 .env
 .env.*
+!.env.example
 *.log
 node_modules/
 .vercel/
 .vercel
+submitted-pdfs/*.pdf
+!submitted-pdfs/.gitkeep

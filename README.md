@@ -3,26 +3,42 @@
 Mobile web app for the **Corporate Office Housekeeping Scoping Checklist**.
 
 - Step-by-step survey form (sections A–R)
-- Generates a PDF report with the HygieneTech logo
-- Emails the PDF to **info@hygienetech.in** on every generate
-- Also downloads a local copy on the device
+- Downloads a PDF report with the HygieneTech logo
+- Saves every PDF into `submitted-pdfs/` (when using the local server)
+- Emails the **PDF attachment** to **info@hygienetech.in**
 
 ## Live website
 
-**Vercel:** https://site-survey-gamma.vercel.app
-
-**GitHub Pages:** https://jaymehta45.github.io/hygienetech-site-survey/
+**Vercel:** https://site-survey-gamma.vercel.app  
 
 **Repo:** https://github.com/Jaymehta45/hygienetech-site-survey
 
-## Local run
+## Recommended: run locally (saves PDFs into the project folder)
 
 ```bash
-python3 -m http.server 5180
+cd site-survey
+npm install
+npm start
 ```
 
 Open http://localhost:5180
 
-## Email activation (one-time)
+Every completed survey PDF is stored in:
 
-Email uses [FormSubmit](https://formsubmit.co). The **first** submission sends an activation link to `info@hygienetech.in`. Click it once — after that, every PDF is emailed automatically.
+`site-survey/submitted-pdfs/`
+
+## Email
+
+By default the server emails the PDF via FormSubmit.
+
+For more reliable delivery, copy `.env.example` → `.env` and set SMTP:
+
+```bash
+cp .env.example .env
+```
+
+Optional: set `GITHUB_TOKEN` so production (Vercel) can also write PDFs into the repo’s `submitted-pdfs/` folder.
+
+## One-time FormSubmit activation
+
+If email doesn’t arrive, check `info@hygienetech.in` for a FormSubmit activation link and confirm once.

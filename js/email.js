@@ -24,44 +24,6 @@
     });
   }
 
-  /** Email body is a short note + PDF file only — never the full form. */
-  async function sendPdfOnlyViaFormSubmit({ state, blob, filename }) {
-    const to = window.HT_CONFIG.emailTo;
-    const pdfFile = new File([blob], filename, { type: "application/pdf" });
-    const fd = new FormData();
-
-    fd.append("_subject", `Site Survey PDF — ${state.clientName || "Client"} / ${state.siteName || "Site"}`);
-    fd.append("_captcha", "false");
-    fd.append("_template", "box");
-    fd.append(
-      "message",
-      [
-        "HygieneTech Site Survey report is attached as a PDF.",
-        "",
-        `File: ${filename}`,
-        `Client: ${state.clientName || "—"}`,
-        `Site: ${state.siteName || "—"}`,
-        `Survey date: ${state.surveyDate || "—"}`,
-        `Surveyor: ${state.surveyBy || "—"}`,
-        "",
-        "Please open the attached PDF for the full report.",
-      ].join("\n")
-    );
-    fd.append("attachment", pdfFile);
-
-    const res = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(to)}`, {
-      method: "POST",
-      body: fd,
-      headers: { Accept: "application/json" },
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.message || data.error || `Email failed (${res.status})`);
-    }
-    return data;
-  }
-
   async function sendPdfViaApi({ state, blob, filename }) {
     const pdfBase64 = await blobToBase64(blob);
     const res = await fetch("/api/send-report", {
@@ -80,7 +42,7 @@
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) {
-      throw new Error(data.error || `API email failed (${res.status})`);
+      throw new Error(data.error || `Save/email failed (${res.status})`);
     }
     return data;
   }
@@ -98,18 +60,15 @@
       downloadBlob(blob, filename);
     }
 
-    onStatus(`PDF downloaded: ${filename}. Emailing the PDF to ${window.HT_CONFIG.emailTo}…`, "ok");
+    onStatus(`PDF downloaded. Saving to submitted-pdfs and emailing to ${window.HT_CONFIG.emailTo}…`, "info");
 
     try {
-      try {
-        await sendPdfViaApi({ state, blob, filename });
-      } catch (apiErr) {
-        console.warn("API PDF email failed, trying FormSubmit PDF-only:", apiErr);
-        await sendPdfOnlyViaFormSubmit({ state, blob, filename });
-      }
-
+      const result = await sendPdfViaApi({ state, blob, filename });
+      const savedPath =
+        (result.saved && (result.saved.relativePath || result.saved.storedName)) || "submitted-pdfs/";
+      const mailTo = (result.emailed && result.emailed.to) || window.HT_CONFIG.emailTo;
       onStatus(
-        `PDF downloaded and emailed to ${window.HT_CONFIG.emailTo} (PDF attachment, not the form).`,
+        `Done. PDF saved (${savedPath}) and emailed to ${mailTo}.`,
         "ok"
       );
     } catch (err) {
@@ -117,14 +76,14 @@
       const msg = String(err.message || err);
       if (/activate|confirm|check your email/i.test(msg)) {
         onStatus(
-          `PDF downloaded. To enable PDF email, open the activation mail at ${window.HT_CONFIG.emailTo} once, then try again.`,
+          `PDF downloaded. Email needs one-time activation at ${window.HT_CONFIG.emailTo} — open that mail, confirm, then submit again. Use npm start so PDFs also save into submitted-pdfs/.`,
           "info"
         );
         return;
       }
       onStatus(
-        `PDF downloaded. Email of the PDF failed (${msg}) — attach the downloaded file to ${window.HT_CONFIG.emailTo} manually.`,
-        "info"
+        `PDF downloaded on this device. Server save/email failed (${msg}). Run npm start locally to store PDFs in submitted-pdfs/.`,
+        "err"
       );
     }
   }
